@@ -21,7 +21,6 @@ import {
 } from "../config.js";
 import { markdownToPlain, collapseDoubleNewlines } from "../markdown.js";
 import { markdownToImage } from "../og-image.js";
-import { logFlow } from "../send-debug-log.js";
 import {
     sendPrivateMsg,
     sendGroupMsg,
@@ -209,17 +208,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
     // 回复目标（参考 openclaw-feishu）：群聊用 group:群号，私聊用 user:用户号
     // To / OriginatingTo / ConversationLabel 均表示「发送目标」，Agent 的 message 工具会据此选择 target
     const replyTarget = isGroup ? `onebot:group:${groupId}` : `onebot:${userId}`;
-    logFlow("processInbound", "accepted", {
-        sessionId,
-        replyTarget,
-        isGroup,
-        groupId,
-        userId,
-        selfId,
-        replyId,
-        messageId: msg.message_id,
-        rawPreview: messageText.slice(0, 160),
-    });
     const ctxPayload = {
         Body: body,
         RawBody: messageText,
@@ -290,16 +278,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
 
     const replySessionId = `onebot-reply-${Date.now()}-${sessionId}`;
     api.logger?.info?.(`[onebot] dispatching message for session ${sessionId}`);
-    logFlow("processInbound", "dispatch_start", {
-        sessionId,
-        replySessionId,
-        replyTarget,
-        routeAgentId: route.agentId,
-        longMessageMode,
-        longMessageThreshold,
-        normalModeFlushIntervalMs,
-        normalModeFlushChars,
-    });
     setActiveReplyTarget(replyTarget);
     setActiveReplySessionId(replySessionId);
     setActiveReplySelfId(selfId);
@@ -370,17 +348,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         text: string,
         mediaUrl: string | undefined
     ) => {
-        logFlow("processInbound", "doSendChunk", {
-            sessionId,
-            replySessionId,
-            effectiveIsGroup,
-            effectiveGroupId,
-            userId: uid,
-            textLen: text?.length ?? 0,
-            textPreview: text?.slice(0, 120),
-            hasMediaUrl: Boolean(mediaUrl),
-            mentionDelivered,
-        });
         if (text) {
             if (effectiveIsGroup && effectiveGroupId) {
                 if (uid && !mentionDelivered) {
@@ -482,25 +449,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                     const replyText = typeof p === "string" ? p : (p?.text ?? p?.body ?? "");
                     const mediaUrl = typeof p === "string" ? undefined : (p?.mediaUrl ?? p?.mediaUrls?.[0]);
                     const trimmed = (replyText || "").trim();
-                    logFlow("processInbound", "deliver_received", {
-                        sessionId,
-                        replySessionId,
-                        kind: info?.kind,
-                        payloadType: typeof p,
-                        textLen: replyText?.length ?? 0,
-                        trimmedLen: trimmed.length,
-                        textPreview: replyText?.slice(0, 200),
-                        hasMediaUrl: Boolean(mediaUrl),
-                        mediaUrlPreview: mediaUrl?.slice(0, 120),
-                    });
                     if ((!trimmed || trimmed === "NO_REPLY" || trimmed.endsWith("NO_REPLY")) && !mediaUrl) {
-                        logFlow("processInbound", "deliver_skipped", {
-                            sessionId,
-                            replySessionId,
-                            kind: info?.kind,
-                            reason: !trimmed ? "empty_text" : "no_reply",
-                            textPreview: replyText?.slice(0, 200),
-                        });
                         return;
                     }
 
@@ -513,18 +462,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                     const usePlain = getRenderMarkdownToPlain(cfg);
                     let textPlain = usePlain ? markdownToPlain(trimmed) : trimmed;
                     if (getCollapseDoubleNewlines(cfg)) textPlain = collapseDoubleNewlines(textPlain);
-                    logFlow("processInbound", "deliver_normalized", {
-                        sessionId,
-                        replySessionId,
-                        kind: info?.kind,
-                        effectiveIsGroup,
-                        effectiveGroupId,
-                        userId: uid,
-                        usePlain,
-                        textPlainLen: textPlain.length,
-                        textPlainPreview: textPlain.slice(0, 200),
-                        hasMediaUrl: Boolean(mediaUrl),
-                    });
 
                     const shouldSendNow = longMessageMode === "normal";
 
@@ -549,13 +486,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                     try {
                         if (shouldSendNow) {
                             if (mediaUrl) {
-                                logFlow("processInbound", "deliver_media_immediate", {
-                                    sessionId,
-                                    replySessionId,
-                                    kind: info?.kind,
-                                    textPlainLen: textPlain.length,
-                                    hasMediaUrl: true,
-                                });
                                 await queueNormalModeFlush(async () => {
                                     await flushBufferedNormalModeText(effectiveIsGroup, effectiveGroupId, uid);
                                     await doSendChunk(effectiveIsGroup, effectiveGroupId, uid, textPlain, mediaUrl);
@@ -569,41 +499,15 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                             } else {
                                 normalModeBufferedText = appendNormalModeText(normalModeBufferedText, textPlain);
                                 normalModeBufferedRawText = appendNormalModeText(normalModeBufferedRawText, trimmed);
-                                logFlow("processInbound", "deliver_buffered", {
-                                    sessionId,
-                                    replySessionId,
-                                    kind: info?.kind,
-                                    bufferedTextLen: normalModeBufferedText.length,
-                                    bufferedRawLen: normalModeBufferedRawText.length,
-                                });
 
                                 if (shouldFlushNormalModeBuffer()) {
-                                    logFlow("processInbound", "deliver_flush_now", {
-                                        sessionId,
-                                        replySessionId,
-                                        kind: info?.kind,
-                                        reason: "threshold_or_punctuation",
-                                        bufferedTextLen: normalModeBufferedText.length,
-                                    });
                                     await queueNormalModeFlush(() => flushBufferedNormalModeText(effectiveIsGroup, effectiveGroupId, uid));
                                 } else {
-                                    logFlow("processInbound", "deliver_flush_scheduled", {
-                                        sessionId,
-                                        replySessionId,
-                                        kind: info?.kind,
-                                        bufferedTextLen: normalModeBufferedText.length,
-                                    });
                                     scheduleNormalModeFlush(effectiveIsGroup, effectiveGroupId, uid);
                                 }
                             }
                         }
                         if (info.kind === "final") {
-                            logFlow("processInbound", "final_enter", {
-                                sessionId,
-                                replySessionId,
-                                shouldSendNow,
-                                deliveredChunkCount: deliveredChunks.length,
-                            });
                             if (shouldSendNow) {
                                 await queueNormalModeFlush(() => flushBufferedNormalModeText(effectiveIsGroup, effectiveGroupId, uid));
                             }
@@ -617,19 +521,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                             const isLong = totalLen > longMessageThreshold;
                             const isIncrementalLong = incrementalLen > longMessageThreshold;
                             const isIncremental = lastSentCount > 0;
-                            logFlow("processInbound", "final_stats", {
-                                sessionId,
-                                replySessionId,
-                                lastSentCount,
-                                chunksToSendCount: chunksToSend.length,
-                                deliveredChunkCount: deliveredChunks.length,
-                                totalLen,
-                                incrementalLen,
-                                isLong,
-                                isIncrementalLong,
-                                isIncremental,
-                                longMessageMode,
-                            });
 
                             if (isIncremental) {
                                 setForwardSuppressDelivery(false);
@@ -752,12 +643,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                             }
 
                             lastSentChunkCountBySession.set(replySessionId, deliveredChunks.length);
-                            logFlow("processInbound", "final_complete", {
-                                sessionId,
-                                replySessionId,
-                                deliveredChunkCount: deliveredChunks.length,
-                                mentionDelivered,
-                            });
 
                             if (clearHistoryEntriesIfEnabled) {
                                 clearHistoryEntriesIfEnabled({
@@ -785,22 +670,10 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                             }
                         }
                     } catch (e: any) {
-                        logFlow("processInbound", "deliver_error", {
-                            sessionId,
-                            replySessionId,
-                            kind: info?.kind,
-                            error: e?.message ?? String(e),
-                        });
                         api.logger?.error?.(`[onebot] deliver failed: ${e?.message}`);
                     }
                 },
                 onError: async (err: any, info: any) => {
-                    logFlow("processInbound", "dispatcher_error", {
-                        sessionId,
-                        replySessionId,
-                        kind: info?.kind,
-                        error: err?.message ?? String(err),
-                    });
                     api.logger?.error?.(`[onebot] ${info?.kind} reply failed: ${err}`);
                     await clearEmojiReaction();
                 },
@@ -809,11 +682,6 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         });
     } catch (err: any) {
         await clearEmojiReaction();
-        logFlow("processInbound", "dispatch_catch", {
-            sessionId,
-            replySessionId,
-            error: err?.message ?? String(err),
-        });
         api.logger?.error?.(`[onebot] dispatch failed: ${err?.message}`);
         try {
             const { userId: uid, groupId: gid, isGroup: ig } = (ctxPayload as any)._onebot || {};
@@ -837,32 +705,11 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         try {
             if (longMessageMode === "normal" && hasBufferedNormalModeText()) {
                 const { effectiveIsGroup, effectiveGroupId, uid } = resolveEffectiveDeliveryTarget();
-                logFlow("processInbound", "dispatch_flush_on_exit", {
-                    sessionId,
-                    replySessionId,
-                    bufferedTextLen: normalModeBufferedText.length,
-                    bufferedRawLen: normalModeBufferedRawText.length,
-                    effectiveIsGroup,
-                    effectiveGroupId,
-                    userId: uid,
-                });
                 await queueNormalModeFlush(() => flushBufferedNormalModeText(effectiveIsGroup, effectiveGroupId, uid));
             } else {
                 await normalModeFlushChain;
             }
-        } catch (e: any) {
-            logFlow("processInbound", "dispatch_flush_on_exit_error", {
-                sessionId,
-                replySessionId,
-                error: e?.message ?? String(e),
-            });
-        }
-        logFlow("processInbound", "dispatch_end", {
-            sessionId,
-            replySessionId,
-            deliveredChunkCount: deliveredChunks.length,
-            mentionDelivered,
-        });
+        } catch (_) { }
         clearNormalModeFlushTimer();
         setForwardSuppressDelivery(false);
         setActiveReplySelfId(null);
