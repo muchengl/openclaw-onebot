@@ -18,6 +18,20 @@ function isEnabled(): boolean {
 
 let sessionLogged = false;
 
+function appendLog(line: string): void {
+  if (!isEnabled()) return;
+  try {
+    if (!sessionLogged) {
+      fs.appendFileSync(
+        SEND_DEBUG_LOG_PATH,
+        `${new Date().toISOString()} [session] 日志路径(绝对): ${SEND_DEBUG_LOG_PATH}\n`
+      );
+      sessionLogged = true;
+    }
+    fs.appendFileSync(SEND_DEBUG_LOG_PATH, line);
+  } catch (_) {}
+}
+
 export function logSend(
   layer: "send" | "connection",
   fn: string,
@@ -42,16 +56,5 @@ export function logSend(
     blocked?: boolean;
   }
 ): void {
-  if (!isEnabled()) return;
-  try {
-    if (!sessionLogged) {
-      fs.appendFileSync(
-        SEND_DEBUG_LOG_PATH,
-        `${new Date().toISOString()} [session] 日志路径(绝对): ${SEND_DEBUG_LOG_PATH}\n`
-      );
-      sessionLogged = true;
-    }
-    const line = `${new Date().toISOString()} [${layer}] ${fn} ${JSON.stringify(data)}\n`;
-    fs.appendFileSync(SEND_DEBUG_LOG_PATH, line);
-  } catch (_) {}
+  appendLog(`${new Date().toISOString()} [${layer}] ${fn} ${JSON.stringify(data)}\n`);
 }
