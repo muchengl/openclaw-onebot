@@ -1,9 +1,11 @@
 {
   "name": "@kirigaya/openclaw-onebot",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "OneBot v11 protocol channel plugin for OpenClaw (QQ/Lagrange.Core/go-cqhttp)",
   "license": "MIT",
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "LSTM-Kirigaya",
   "repository": {
     "type": "git",
@@ -32,8 +34,13 @@
     "README.md"
   ],
   "openclaw": {
-    "extensions": ["./dist/index.js"],
-    "skills": ["skills/onebot-ops", "skills/onebot-scripts"],
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "skills": [
+      "skills/onebot-ops",
+      "skills/onebot-scripts"
+    ],
     "channel": {
       "id": "onebot",
       "label": "OneBot",
@@ -41,7 +48,11 @@
       "docsPath": "/channels/onebot",
       "blurb": "OneBot v11 protocol via WebSocket (go-cqhttp, Lagrange.Core, etc.)",
       "order": 85,
-      "aliases": ["qq", "lagrange", "cqhttp"]
+      "aliases": [
+        "qq",
+        "lagrange",
+        "cqhttp"
+      ]
     }
   },
   "scripts": {
@@ -70,8 +81,12 @@
     "clawdbot": "*"
   },
   "peerDependenciesMeta": {
-    "clawdbot": { "optional": true },
-    "openclaw": { "optional": true }
+    "clawdbot": {
+      "optional": true
+    },
+    "openclaw": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.4.0",
