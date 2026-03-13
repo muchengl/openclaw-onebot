@@ -31,7 +31,7 @@ import {
     setMsgEmojiLike,
     getMsg,
 } from "../connection.js";
-import { setActiveReplyTarget, clearActiveReplyTarget, setActiveReplySessionId, setForwardSuppressDelivery, setActiveReplySelfId } from "../reply-context.js";
+import { setActiveReplyTarget, clearActiveReplyTarget, setActiveReplySessionId, setForwardSuppressDelivery, setActiveReplySelfId, getForwardSuppressDelivery } from "../reply-context.js";
 import { loadPluginSdk, getSdk } from "../sdk.js";
 import { handleGroupIncrease } from "./group-increase.js";
 
@@ -332,7 +332,13 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         uid: number | undefined
     ): Promise<void> => {
         if (!effectiveIsGroup || !effectiveGroupId || !uid || mentionDelivered) return;
-        await sendGroupMsg(effectiveGroupId, buildMentionMessage(uid, ""), getConfig);
+        const previousSuppress = getForwardSuppressDelivery();
+        if (previousSuppress) setForwardSuppressDelivery(false);
+        try {
+            await sendGroupMsg(effectiveGroupId, buildMentionMessage(uid, ""), getConfig);
+        } finally {
+            if (previousSuppress) setForwardSuppressDelivery(true);
+        }
         mentionDelivered = true;
     };
 
@@ -665,7 +671,13 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
             const { userId: uid, groupId: gid, isGroup: ig } = (ctxPayload as any)._onebot || {};
             if (ig && gid) {
                 if (uid && !mentionDelivered) {
-                    await sendGroupMsg(gid, buildMentionMessage(uid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`), getConfig);
+                    const previousSuppress = getForwardSuppressDelivery();
+                    if (previousSuppress) setForwardSuppressDelivery(false);
+                    try {
+                        await sendGroupMsg(gid, buildMentionMessage(uid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`), getConfig);
+                    } finally {
+                        if (previousSuppress) setForwardSuppressDelivery(true);
+                    }
                     mentionDelivered = true;
                 } else {
                     await sendGroupMsg(gid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`, getConfig);
