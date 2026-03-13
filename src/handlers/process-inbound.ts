@@ -286,6 +286,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
 
     const deliveredChunks: Array<{ index: number; text?: string; rawText?: string; mediaUrl?: string }> = [];
     let chunkIndex = 0;
+    let mentionDelivered = false;
     let normalModeBufferedText = "";
     let normalModeBufferedRawText = "";
     let normalModeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -314,6 +315,27 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         return normalModeFlushChain;
     };
 
+    const buildMentionMessage = (
+        uid: number,
+        text: string
+    ): Array<{ type: string; data: Record<string, unknown> }> => {
+        const content = text ? (/^\s/.test(text) ? text : ` ${text}`) : " ";
+        return [
+            { type: "at", data: { qq: String(uid) } },
+            { type: "text", data: { text: content } },
+        ];
+    };
+
+    const ensureGroupMentionDelivered = async (
+        effectiveIsGroup: boolean,
+        effectiveGroupId: number | undefined,
+        uid: number | undefined
+    ): Promise<void> => {
+        if (!effectiveIsGroup || !effectiveGroupId || !uid || mentionDelivered) return;
+        await sendGroupMsg(effectiveGroupId, buildMentionMessage(uid, ""), getConfig);
+        mentionDelivered = true;
+    };
+
     const doSendChunk = async (
         effectiveIsGroup: boolean,
         effectiveGroupId: number | undefined,
@@ -322,12 +344,24 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         mediaUrl: string | undefined
     ) => {
         if (text) {
-            if (effectiveIsGroup && effectiveGroupId) await sendGroupMsg(effectiveGroupId, text, getConfig);
-            else if (uid) await sendPrivateMsg(uid, text, getConfig);
+            if (effectiveIsGroup && effectiveGroupId) {
+                if (uid && !mentionDelivered) {
+                    await sendGroupMsg(effectiveGroupId, buildMentionMessage(uid, text), getConfig);
+                    mentionDelivered = true;
+                } else {
+                    await sendGroupMsg(effectiveGroupId, text, getConfig);
+                }
+            } else if (uid) {
+                await sendPrivateMsg(uid, text, getConfig);
+            }
         }
         if (mediaUrl) {
-            if (effectiveIsGroup && effectiveGroupId) await sendGroupImage(effectiveGroupId, mediaUrl, api.logger, getConfig);
-            else if (uid) await sendPrivateImage(uid, mediaUrl, api.logger, getConfig);
+            if (effectiveIsGroup && effectiveGroupId) {
+                await ensureGroupMentionDelivered(effectiveIsGroup, effectiveGroupId, uid);
+                await sendGroupImage(effectiveGroupId, mediaUrl, api.logger, getConfig);
+            } else if (uid) {
+                await sendPrivateImage(uid, mediaUrl, api.logger, getConfig);
+            }
         }
     };
 
@@ -476,6 +510,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                                             try {
                                                 const imgUrl = await markdownToImage(fullRaw, { theme: getOgImageRenderTheme(api?.config) });
                                                 if (imgUrl) {
+                                                    await ensureGroupMentionDelivered(effectiveIsGroup, effectiveGroupId, uid);
                                                     if (effectiveIsGroup && effectiveGroupId) await sendGroupImage(effectiveGroupId, imgUrl, api.logger, getConfig);
                                                     else if (uid) await sendPrivateImage(uid, imgUrl, api.logger, getConfig);
                                                 } else {
@@ -503,6 +538,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                                                     }
                                                 }
                                                 if (nodes.length > 0) {
+                                                    await ensureGroupMentionDelivered(effectiveIsGroup, effectiveGroupId, uid);
                                                     if (effectiveIsGroup && effectiveGroupId) await sendGroupForwardMsg(effectiveGroupId, nodes, getConfig);
                                                     else if (uid) await sendPrivateForwardMsg(uid, nodes, getConfig);
                                                 } else {
@@ -534,6 +570,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                                         try {
                                             const imgUrl = await markdownToImage(fullRaw, { theme: getOgImageRenderTheme(api?.config) });
                                             if (imgUrl) {
+                                                await ensureGroupMentionDelivered(effectiveIsGroup, effectiveGroupId, uid);
                                                 if (effectiveIsGroup && effectiveGroupId) await sendGroupImage(effectiveGroupId, imgUrl, api.logger, getConfig);
                                                 else if (uid) await sendPrivateImage(uid, imgUrl, api.logger, getConfig);
                                             } else {
@@ -564,6 +601,7 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
                                             }
                                         }
                                         if (nodes.length > 0) {
+                                            await ensureGroupMentionDelivered(effectiveIsGroup, effectiveGroupId, uid);
                                             if (effectiveIsGroup && effectiveGroupId) await sendGroupForwardMsg(effectiveGroupId, nodes, getConfig);
                                             else if (uid) await sendPrivateForwardMsg(uid, nodes, getConfig);
                                         }
@@ -625,7 +663,14 @@ export async function processInboundMessage(api: any, msg: OneBotMessage): Promi
         api.logger?.error?.(`[onebot] dispatch failed: ${err?.message}`);
         try {
             const { userId: uid, groupId: gid, isGroup: ig } = (ctxPayload as any)._onebot || {};
-            if (ig && gid) await sendGroupMsg(gid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`);
+            if (ig && gid) {
+                if (uid && !mentionDelivered) {
+                    await sendGroupMsg(gid, buildMentionMessage(uid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`), getConfig);
+                    mentionDelivered = true;
+                } else {
+                    await sendGroupMsg(gid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`, getConfig);
+                }
+            }
             else if (uid) await sendPrivateMsg(uid, `处理失败: ${err?.message?.slice(0, 80) || "未知错误"}`);
         } catch (_) { }
     } finally {

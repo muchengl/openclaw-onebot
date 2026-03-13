@@ -287,7 +287,7 @@ export async function ensureConnection(
 
 export async function sendPrivateMsg(
     userId: number,
-    text: string,
+    message: string | Array<{ type: string; data?: Record<string, unknown> }>,
     getConfig?: () => OneBotAccountConfig | null
 ): Promise<number | undefined> {
     if (shouldBlockSendInForwardMode("private", userId)) {
@@ -297,15 +297,15 @@ export async function sendPrivateMsg(
     logSend("connection", "sendPrivateMsg", {
         targetType: "user",
         targetId: userId,
-        textPreview: text?.slice(0, 80),
-        textLen: text?.length,
+        textPreview: typeof message === "string" ? message?.slice(0, 80) : JSON.stringify(message)?.slice(0, 80),
+        textLen: typeof message === "string" ? message?.length : message?.length,
         sessionId: getActiveReplyTarget(),
         replySessionId: getActiveReplySessionId(),
     });
     const socket = getConfig
         ? await ensureConnection(getConfig)
         : await waitForConnection();
-    const res = await sendOneBotAction(socket, "send_private_msg", { user_id: userId, message: text });
+    const res = await sendOneBotAction(socket, "send_private_msg", { user_id: userId, message });
     if (res?.retcode !== 0) {
         throw new Error(res?.msg ?? `OneBot send_private_msg failed (retcode=${res?.retcode})`);
     }
@@ -316,7 +316,7 @@ export async function sendPrivateMsg(
 
 export async function sendGroupMsg(
     groupId: number,
-    text: string,
+    message: string | Array<{ type: string; data?: Record<string, unknown> }>,
     getConfig?: () => OneBotAccountConfig | null
 ): Promise<number | undefined> {
     if (shouldBlockSendInForwardMode("group", groupId)) {
@@ -326,15 +326,15 @@ export async function sendGroupMsg(
     logSend("connection", "sendGroupMsg", {
         targetType: "group",
         targetId: groupId,
-        textPreview: text?.slice(0, 80),
-        textLen: text?.length,
+        textPreview: typeof message === "string" ? message?.slice(0, 80) : JSON.stringify(message)?.slice(0, 80),
+        textLen: typeof message === "string" ? message?.length : message?.length,
         sessionId: getActiveReplyTarget(),
         replySessionId: getActiveReplySessionId(),
     });
     const socket = getConfig
         ? await ensureConnection(getConfig)
         : await waitForConnection();
-    const res = await sendOneBotAction(socket, "send_group_msg", { group_id: groupId, message: text });
+    const res = await sendOneBotAction(socket, "send_group_msg", { group_id: groupId, message });
     if (res?.retcode !== 0) {
         throw new Error(res?.msg ?? `OneBot send_group_msg failed (retcode=${res?.retcode})`);
     }
